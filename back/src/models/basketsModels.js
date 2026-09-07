@@ -53,6 +53,13 @@ const deleteProductsInBaskets = async (idProducts, idBaskets) => {
   return result;
 };
 
+const deleteAllItemsInBasket = async (idBaskets, conn) => {
+  const [result] = await conn.query(`
+    DELETE FROM baskets_products
+    WHERE id_baskets = ?`, [idBaskets]);
+  return result;
+};
+
 module.exports = {
   createBasket,
   getBasketIdByUserId,
@@ -61,4 +68,5 @@ module.exports = {
   insertProductInBasket,
   updateQuantityByIdProductsAndIdBaskets,
   deleteProductsInBaskets,
+  deleteAllItemsInBasket,
 };

@@ -1,6 +1,8 @@
 const stripe = require('stripe')(process.env.STRIPE_API);
 const basketModel = require('../models/basketsModels');
 const userModel = require('../models/usersModels');
+const orderModel = require('../models/orderModels');
+const pool = require('../config/db');
 
 const getBasket = async (idUser) => {
   const basket = await basketModel.getBasket(idUser);
@@ -48,6 +50,46 @@ const createSession = async (req, res) => {
   }
 };
 
+const processOrder = async (
+  dateOrder,
+  countryOrder,
+  address,
+  cityOrder,
+  postalCodeOrder,
+  price,
+  idUser,
+) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const order = await orderModel.createOrders(
+      dateOrder,
+      countryOrder,
+      address,
+      cityOrder,
+      postalCodeOrder,
+      price,
+      idUser,
+      conn,
+    );
+    const idOrder = order.insertId;
+    const basket = await basketModel.getBasket(idUser);
+    await orderModel.createOrdersProducts(basket, idOrder, conn);
+
+    const sqlIdBasket = await basketModel.getBasketIdByUserId(idUser);
+
+    const idBasket = sqlIdBasket[0].id;
+    await basketModel.deleteAllItemsInBasket(idBasket, conn);
+
+    await conn.commit();
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+};
+
 const webhook = async (req, res) => {
   try {
     const signature = req.headers['stripe-signature'];
@@ -56,25 +98,30 @@ const webhook = async (req, res) => {
     if (event.type === 'checkout.session.completed') {
       const idUser = event.data.object.client_reference_id;
 
+      const price = event.data.object.amount_total / 100;
+      const dateOrder = new Date();
+
       const eventAddress = event.data.object.collected_information.shipping_details.address;
-      const codePostal = eventAddress.postal_code;
+      const postalCodeOrder = eventAddress.postal_code;
       const cityOrder = eventAddress.city;
       const countryOrder = eventAddress.country;
       let address = eventAddress.line1;
       if (eventAddress.line2 !== null) {
         address += ` ${eventAddress.line2}`;
       }
-
-      const price = event.data.object.amount_total / 100;
-      const dateOrder = new Date();
-
-      // création de la commande de l'utilisateur avec idUser
-      console.log('info:', {
-        idUser, codePostal, cityOrder, countryOrder, address, price, dateOrder,
-      });
+      await processOrder(
+        dateOrder,
+        countryOrder,
+        address,
+        cityOrder,
+        postalCodeOrder,
+        price,
+        idUser,
+      );
     }
     return res.status(200).json({ received: true });
   } catch (error) {
+    console.log(error);
     return res.status(400).json({ message: 'une erreur est survenue', error: error.message });
   }
 };

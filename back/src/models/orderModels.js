@@ -24,8 +24,20 @@ const createOrdersProducts = async (basketItems, idOrder, conn) => {
   return result;
 };
 
+const getOrderByIdUser = async (idUser) => {
+  const [result] = await db.query(`
+    SELECT orders.id, orders.date_order, orders.country, orders.address, orders.city, orders.postal_code, orders.total_price, orders_products.quantity, products.name, images.url 
+    FROM orders 
+    JOIN orders_products ON orders.id = orders_products.id_orders
+    JOIN products ON products.id = orders_products.id_products 
+    JOIN images ON products.id = images.id_products 
+    WHERE orders.id_users = ?`, [idUser]);
+  return result;
+};
+
 module.exports = {
   getOrdersIdsByUserId,
   createOrders,
   createOrdersProducts,
+  getOrderByIdUser,
 };
